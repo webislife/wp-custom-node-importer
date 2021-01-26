@@ -1,6 +1,9 @@
 const csv = require('csv-parser');
 const fs = require('fs');
 const axios = require('axios');
+const handleErr = err => {
+    console.error('Handled error', err);
+}
 
 let CONFIG = {
     login: 'alexey85',
@@ -49,22 +52,76 @@ class WPImporter {
     }
 
     async syncItems() {
-        console.log('Start sync jewels', this.CATALOG_ITEMS);
+        console.log('Старт синхронизации jewels');
+
         for (let i = 0; i < this.CATALOG_ITEMS.length; i++) {
             const item = this.CATALOG_ITEMS[i];
+
+            if(!!item.art === false) {
+                console.error('Некорректный артикул', item);
+                break;
+            }
             console.log('Sync jewel', item.art);
 
-            //@TODO: Create or Update
-            let resp = await API.post('/wp/v2/jewels', {
-                status: 'publish',
-                title: item.title,
-                content: item.content,
-            }).catch(err => {
-                console.log('Ошибка синхронизации', item.title, err);
-            });
-
-            console.log('resp', resp);
+            //Ищем товар по артикулу
+            const existProduct = await this.searchItemByCustomField('art', item.art);
+            console.log('existProduct', existProduct);
+            //Если товар не найден
+            if(existProduct.length === 0) {
+                //Создаем новый
+                const resp = await this.createNewItem(item).catch(handleErr);
+            } else {
+                //Обновляем
+                await this.updateItem(existProduct[0], item).catch(handleErr);
+            }
         }
+    }
+
+    async updateItem(existProduct, item) {
+        console.log('Обновление jewel: ', item.art);
+
+        const response = await API.post(`/wp/v2/jewels/${existProduct.id}`, {
+            status: 'publish',
+            title: item.title,
+            content: item.content,
+            jewtag: item.jewtag.split(','),
+            jewcat: item.jewcat.split(','),
+        }).catch(err => {
+            console.log('Ошибка синхронизации', item.title, err);
+            throw new console.error('Ошибка синхронизации.');
+        });
+
+        return response.data;
+    }
+
+    async createNewItem(item) {
+        console.log('Создание нового jewel: ', item.art);
+
+        const response = await API.post('/wp/v2/jewels', {
+            status: 'publish',
+            title: item.title,
+            content: item.content,
+            jewtag: item.jewtag.split(','),
+            jewcat: item.jewcat.split(','),
+        }).catch(err => {
+            console.log('Ошибка синхронизации', item.title, err);
+            throw new console.error('Ошибка синхронизации.');
+        });
+
+        return response.data;
+    } 
+
+    async searchItemByCustomField(fieldName, fieldValue) {
+        const response = await API.get('/wp/v2/jewels', {
+            params: {
+                'filter[meta_key]': fieldName,
+                'filter[meta_compare]': 'LIKE',
+                'filter[meta_value]': fieldValue,
+            }
+        }).catch(err => {
+            throw new Error(`Ошибка при поиске ${fieldName}:${fieldValue}`)
+        });
+        return response.data;
     }
 
     readFile(path) {
@@ -93,8 +150,6 @@ class WPImporter {
             }).then(response => {
                 if (typeof response.data.token === 'string') {
                     console.log('Успешная авторизация, token:', response.data.token);
-                    console.log('API', API);
-                    // API.defaults.headers.common['Authorization'] = 'Bearer ' + response.data.token;
                     CONFIG.token = response.data.token;
                     resolve(response.data.token);
                 } else {
