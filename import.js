@@ -6,8 +6,8 @@ const handleErr = err => {
 }
 
 let CONFIG = {
-    login: 'alexey85',
-    password: 'alexey85alexey85',
+    login: 'api',
+    password: 'ITfSJq9XuXzwo@c9@xK5)@NF',
     token: null,
     secretKey: 'QWERTYUJMNBVFDRTYUJNBGYUIK123MNBGYUKMN',
 };
@@ -65,12 +65,13 @@ class WPImporter {
 
             //Ищем товар по артикулу
             const existProduct = await this.searchItemByCustomField('art', item.art);
-            console.log('existProduct', existProduct);
+            
             //Если товар не найден
             if(existProduct.length === 0) {
                 //Создаем новый
                 const resp = await this.createNewItem(item).catch(handleErr);
             } else {
+                console.log('Обновляем jewel с ID:', existProduct[0].id);
                 //Обновляем
                 await this.updateItem(existProduct[0], item).catch(handleErr);
             }
@@ -80,13 +81,26 @@ class WPImporter {
     async updateItem(existProduct, item) {
         console.log('Обновление jewel: ', item.art);
 
-        const response = await API.post(`/wp/v2/jewels/${existProduct.id}`, {
+        if(this.validateJewel(item) === false) {
+            return false;
+        }
+        let newJewel = new Object({
             status: 'publish',
             title: item.title,
             content: item.content,
-            jewtag: item.jewtag.split(','),
-            jewcat: item.jewcat.split(','),
-        }).catch(err => {
+            art: item.art,
+            weight: item.weight,
+            workPrice: item.workprice,
+        });
+        
+        if(item.jewcat !== '') {
+            newJewel.jewcat = item.jewcat.split(',');
+        }
+        if(item.jewtag !== '') {
+            newJewel.jewtag = item.jewtag.split(',');
+        }
+
+        const response = await API.post(`/wp/v2/jewels/${existProduct.id}`, newJewel).catch(err => {
             console.log('Ошибка синхронизации', item.title, err);
             throw new console.error('Ошибка синхронизации.');
         });
@@ -95,19 +109,32 @@ class WPImporter {
     }
 
     async createNewItem(item) {
+        
         console.log('Создание нового jewel: ', item.art);
-
-        const response = await API.post('/wp/v2/jewels', {
+        
+        if(this.validateJewel(item) === false) {
+            return false;
+        }
+        let newJewel = new Object({
             status: 'publish',
             title: item.title,
             content: item.content,
-            jewtag: item.jewtag.split(','),
-            jewcat: item.jewcat.split(','),
-        }).catch(err => {
-            console.log('Ошибка синхронизации', item.title, err);
+            art: item.art,
+            weight: item.weight,
+            workPrice: item.workprice,
+        });
+        
+        if(item.jewcat !== '') {
+            newJewel.jewcat = item.jewcat.split(',');
+        }
+        if(item.jewtag !== '') {
+            newJewel.jewtag = item.jewtag.split(',');
+        }
+
+        const response = await API.post('/wp/v2/jewels', newJewel).catch(err => {
+            console.log('Ошибка синхронизации', item.title, err.response.data);
             throw new console.error('Ошибка синхронизации.');
         });
-
         return response.data;
     } 
 
@@ -122,6 +149,18 @@ class WPImporter {
             throw new Error(`Ошибка при поиске ${fieldName}:${fieldValue}`)
         });
         return response.data;
+    }
+
+    validateJewel(jewel) {
+        if(jewel.jewtag === undefined) {
+            console.error('Ошибка! Колонка jewtag не обнаружена.');
+            return false;
+        } 
+        if(jewel.jewcat === undefined) {
+            console.error('Ошибка! Колонка jewcat не обнаружена.');
+            return false;
+        }
+        return true;
     }
 
     readFile(path) {
@@ -153,6 +192,7 @@ class WPImporter {
                     CONFIG.token = response.data.token;
                     resolve(response.data.token);
                 } else {
+                    console.log(response.data);
                     reject('Неудачная авторизация.');
                 }
             }).catch(response => {
