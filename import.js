@@ -69,9 +69,8 @@ class WPImporter {
             //Если товар не найден
             if(existProduct.length === 0) {
                 //Создаем новый
-                const resp = await this.createNewItem(item).catch(handleErr);
+                await this.createNewItem(item).catch(handleErr);
             } else {
-                console.log('Обновляем jewel с ID:', existProduct[0].id);
                 //Обновляем
                 await this.updateItem(existProduct[0], item).catch(handleErr);
             }
@@ -79,7 +78,7 @@ class WPImporter {
     }
 
     async updateItem(existProduct, item) {
-        console.log('Обновление jewel: ', item.art);
+        console.log('Обновление jewel ART: ', item.art,'ID:',existProduct.id);
 
         if(this.validateJewel(item) === false) {
             return false;
@@ -96,6 +95,7 @@ class WPImporter {
         if(item.jewcat !== '') {
             newJewel.jewcat = item.jewcat.split(',');
         }
+
         if(item.jewtag !== '') {
             newJewel.jewtag = item.jewtag.split(',');
         }
@@ -131,6 +131,13 @@ class WPImporter {
             newJewel.jewtag = item.jewtag.split(',');
         }
 
+        if(item.featuredImage !== '') {
+            const mediaId = await this.uploadMedia(item.featuredImage);
+            if(mediaId !== false) {
+                newJewel.featured_media = mediaId;
+            }
+        }
+
         const response = await API.post('/wp/v2/jewels', newJewel).catch(err => {
             console.log('Ошибка синхронизации', item.title, err.response.data);
             throw new console.error('Ошибка синхронизации.');
@@ -150,7 +157,10 @@ class WPImporter {
         });
         return response.data;
     }
-
+    /**
+     * Валидация сущности jewel
+     * @param {object} jewel model
+     */
     validateJewel(jewel) {
         if(jewel.jewtag === undefined) {
             console.error('Ошибка! Колонка jewtag не обнаружена.');
@@ -162,7 +172,36 @@ class WPImporter {
         }
         return true;
     }
-
+    /**
+     * Загрузка изображения на сайт
+     * @param {string} path image path
+     * @returns {null|number} media id or null
+     */
+    async uploadMedia(path) {
+        console.log('Загрузка изображения', path);
+        if(fs.existsSync(path) === false) {
+            console.log("Файл не обнаружен", path);
+            return false;
+        }
+        const file = fs.readFileSync(path);
+        const filename = path.split('/').reverse()[0];
+        const response = await API.post('/wp/v2/media', file, {
+            headers: {
+                'Content-Disposition': 'form-data; filename="'+filename+'"',
+            }
+        }).catch(handleErr);
+        if(typeof response.data.id === 'number') {
+            console.log("\x1b[32m", 'Загрузка успешно завершена, media ID:', response.data.id, '\x1b[0m');
+            return response.data.id;
+        } else {
+            console.log("\x1b[31m", 'Ошибка при загрузке изображения', path, '\x1b[0m');
+            return false;
+        }
+    }
+    /**
+     * Чтение csv файла каталога
+     * @param {String} path filepath
+     */
     readFile(path) {
         console.log('Чтение:', path);
         const items = this.CATALOG_ITEMS;
@@ -179,7 +218,9 @@ class WPImporter {
                 });
         });
     }
-
+    /**
+     * Авторизация API
+     */
     WPAuth() {
         console.log('Авторизация на сайте: ', CONFIG.login, ':', CONFIG.password);
         return new Promise((resolve, reject) => {
