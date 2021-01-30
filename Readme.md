@@ -6,4 +6,4 @@
 
 - `git pull origin master` обновить
 - `npm install` обновление зависимостей
-- `CATALOG=testCatalog,csv node import.js` запуск  импорта
+- `CATALOG=testCatalog.csv node import.js` запуск  импорта
