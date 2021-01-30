@@ -50,7 +50,15 @@ class WPImporter {
                 })
         }
     }
-
+    log(msg, color = 'red') {
+        const colors = {
+            red: "\x1b[31m",
+            green: "\x1b[32m",
+            yellow: "\x1b[33m",
+        };
+        let currentColor = colors[color] || '\x1b[0m';
+        console.log(currentColor, msg, '\x1b[0m');
+    }
     async syncItems() {
         console.log('Старт синхронизации jewels');
 
@@ -69,12 +77,15 @@ class WPImporter {
             //Если товар не найден
             if(existProduct.length === 0) {
                 //Создаем новый
-                await this.createNewItem(item).catch(handleErr);
+                const jewel = await this.createNewItem(item).catch(handleErr);
+                this.log(`Jewel ID: ${jewel.id} создан`, 'green');
             } else {
                 //Обновляем
-                await this.updateItem(existProduct[0], item).catch(handleErr);
+                const jewel = await this.updateItem(existProduct[0], item).catch(handleErr);
+                this.log(`Jewel ID: ${existProduct[0].id} обновлен`, 'green');
             }
         }
+        this.log('Синхронизация завершена', 'green');
     }
 
     async updateItem(existProduct, item) {
@@ -101,8 +112,8 @@ class WPImporter {
         }
 
         const response = await API.post(`/wp/v2/jewels/${existProduct.id}`, newJewel).catch(err => {
-            console.log('Ошибка синхронизации', item.title, err);
-            throw new console.error('Ошибка синхронизации.');
+            this.log('Ошибка синхронизации ' + item.art, 'red');
+            throw new this.log('Ошибка синхронизации.', 'red');
         });
 
         return response.data;
@@ -115,21 +126,8 @@ class WPImporter {
         if(this.validateJewel(item) === false) {
             return false;
         }
-        let newJewel = new Object({
-            status: 'publish',
-            title: item.title,
-            content: item.content,
-            art: item.art,
-            weight: item.weight,
-            workPrice: item.workprice,
-        });
-        
-        if(item.jewcat !== '') {
-            newJewel.jewcat = item.jewcat.split(',');
-        }
-        if(item.jewtag !== '') {
-            newJewel.jewtag = item.jewtag.split(',');
-        }
+
+        let newJewel = this.prepareJewelModel(item);
 
         if(item.featuredImage !== '') {
             const mediaId = await this.uploadMedia(item.featuredImage);
@@ -139,9 +137,10 @@ class WPImporter {
         }
 
         const response = await API.post('/wp/v2/jewels', newJewel).catch(err => {
-            console.log('Ошибка синхронизации', item.title, err.response.data);
-            throw new console.error('Ошибка синхронизации.');
+            console.log('Ошибка создания', item.title, err.response.data);
+            throw new this.log('Ошибка синхронизации.', 'red');
         });
+
         return response.data;
     } 
 
@@ -156,6 +155,26 @@ class WPImporter {
             throw new Error(`Ошибка при поиске ${fieldName}:${fieldValue}`)
         });
         return response.data;
+    }
+
+    prepareJewelModel(item) {
+        let jewel = new Object({
+            status: 'publish',
+            title: item.title,
+            content: item.content,
+            art: item.art,
+            weight: item.weight,
+            workPrice: item.workprice,
+        });
+        
+        if(item.jewcat !== '') {
+            jewel.jewcat = item.jewcat.split(',');
+        }
+        if(item.jewtag !== '') {
+            jewel.jewtag = item.jewtag.split(',');
+        }
+
+        return jewel;
     }
     /**
      * Валидация сущности jewel
@@ -175,9 +194,10 @@ class WPImporter {
     /**
      * Загрузка изображения на сайт
      * @param {string} path image path
-     * @returns {null|number} media id or null
+     * @returns {false|number} media id or false
      */
     async uploadMedia(path) {
+        path = decodeURIComponent(path);
         console.log('Загрузка изображения', path);
         if(fs.existsSync(path) === false) {
             console.log("Файл не обнаружен", path);
@@ -191,10 +211,10 @@ class WPImporter {
             }
         }).catch(handleErr);
         if(typeof response.data.id === 'number') {
-            console.log("\x1b[32m", 'Загрузка успешно завершена, media ID:', response.data.id, '\x1b[0m');
+            this.log(`Загрузка успешно завершена, media ID:', ${response.data.id}`, 'green');
             return response.data.id;
         } else {
-            console.log("\x1b[31m", 'Ошибка при загрузке изображения', path, '\x1b[0m');
+            this.log(`Ошибка при загрузке изображения', path`, 'red');
             return false;
         }
     }
